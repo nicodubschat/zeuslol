@@ -12,15 +12,16 @@ A Discord bot that bypasses link shorteners and script protection services with 
 - Persistent channel settings across restarts
 - DM-based results for privacy
 - Server-side message cleanup
-- Multi-API fallback system (Bypass VIP → Ace → TRW → ZEN → EAS-X)
+- Multi-API fallback system (Bypass VIP → Ace → ZEN → EAS-X)
 
 ## Recent Changes (November 2025)
+- **NEW: Removed TRW API**: Streamlined fallback chain for faster bypass speed
+- **NEW: Faster bypass**: Reduced API timeout from 30s to 15s for quicker responses
 - **NEW: Added Bypass VIP API support**: Bypass VIP bypass API added as premium first-priority fallback option
-- **NEW: Added EAS-X API support**: EAS-X bypass API added as fourth fallback option
+- **NEW: Added EAS-X API support**: EAS-X bypass API added as third fallback option
 - **NEW: Fixed API authentication**: All APIs now use correct authentication methods (headers vs query params)
 - **NEW: Updated ZEN API**: Now uses x-api-key header instead of Bearer token
-- **NEW: Updated TRW API**: Now uses x-api-key header authentication
-- **Multi-API fallback**: System now tries Bypass VIP → Ace → TRW → ZEN → EAS-X automatically until one succeeds
+- **Multi-API fallback**: System now tries Bypass VIP → Ace → ZEN → EAS-X automatically until one succeeds
 - **Fixed API response validation**: APIs only return success if actual content is received
 - **Fixed "No result from API" error**: Improved response parsing for all providers
 - Added EAS-X API key configuration in `/config` command
@@ -35,10 +36,11 @@ A Discord bot that bypasses link shorteners and script protection services with 
 
 ## Architecture
 - `bot.py` - Main bot logic with commands and event handlers
-- `bypass_provider.py` - Multi-API bypass provider with automatic fallback (Bypass VIP → Ace → TRW → ZEN → EAS-X)
+- `bypass_provider.py` - Multi-API bypass provider with automatic fallback (Bypass VIP → Ace → ZEN → EAS-X)
   - Supports both GET and POST requests with proper header authentication
   - Validates API responses to ensure actual content is received
   - Handles "unsupported link" errors gracefully
+  - Faster 15-second timeout per API for quick responses
 - `user_rate_limiter.py` - User rate limiting with JSON persistence (1 per 15s, 5 per day)
 - `cache_manager.py` - Cache management for bypass results
 - `rate_limiter.py` - General rate limiting utilities
@@ -54,17 +56,15 @@ Required secrets (add via Replit Secrets):
 Optional API keys for bypass services (at least one recommended):
 - `BYPASS_VIP_API_KEY` - API key for Bypass VIP service (premium, uses x-api-key header)
 - `BYPASS_API_KEY` - API key for Ace Bypass service (uses query parameter auth)
-- `TRW_API_KEY` - API key for TRW bypass service (uses x-api-key header)
 - `ZEN_API_KEY` - API key for ZEN bypass service (uses x-api-key header)
 - `EAS_API_KEY` - API key for EAS-X bypass service (uses eas-api-key header)
 - `OPENAI_API_KEY` - OpenAI API key for AI features (optional)
 
-**Note**: The bot tries all available APIs in order (Bypass VIP → Ace → TRW → ZEN → EAS-X) until one succeeds. You can also set API keys using the `/config` command.
+**Note**: The bot tries all available APIs in order (Bypass VIP → Ace → ZEN → EAS-X) until one succeeds with a 15-second timeout per API for faster responses. You can also set API keys using the `/config` command.
 
 ### API Authentication Methods
 - **Bypass VIP**: HTTP GET with `x-api-key` header (premium service, first priority)
 - **Ace**: HTTP GET with `?apikey=` query parameter
-- **TRW**: HTTP GET with `x-api-key` header
 - **ZEN**: HTTP GET with `x-api-key` header
 - **EAS-X**: HTTP POST with `eas-api-key` header and JSON body
 
@@ -81,7 +81,7 @@ Optional API keys for bypass services (at least one recommended):
 - Daily resets at midnight UTC
 
 ## Supported Services (60+)
-All services from Ace, TRW, and ZEN APIs including:
+All services from Bypass VIP, Ace, ZEN, and EAS-X APIs including:
 - Linkvertise, LootLabs, Admaven, Work.ink, CodeX, Cuty.io, ouo.io, Lockr, Rekonise, MBoost.me
 - KRNL, Platoboost, Blox-script, Overdrivehub, Socialwolvez, Linkify
 - Pastebin, Paste-Drop, Pastefy, Scriptpastebins

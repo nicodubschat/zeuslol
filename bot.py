@@ -183,7 +183,7 @@ cache_manager = CacheManager(ttl_minutes=30)
 rate_limiter = RateLimiter(max_requests=10, time_window=60)
 hwid_service = HWIDService()
 user_activity = UserActivity()
-bypass_provider = BypassProvider(BYPASS_API_KEY, TRW_API_KEY, ZEN_API_KEY, EAS_API_KEY, BYPASS_VIP_API_KEY)
+bypass_provider = BypassProvider(BYPASS_API_KEY, None, ZEN_API_KEY, EAS_API_KEY, BYPASS_VIP_API_KEY)
 
 SUPPORTED_SERVICES = [
     "codex", "trigon", "rekonise", "linkvertise", "paster-so", "cuttlinks",
@@ -1037,12 +1037,6 @@ class ConfigModal(Modal):
         style=discord.TextStyle.short,
         max_length=200)
 
-    trw_api_key_input = TextInput(label='TRW API Key',
-                                  placeholder='Enter your TRW API key',
-                                  required=False,
-                                  style=discord.TextStyle.short,
-                                  max_length=200)
-
     zen_api_key_input = TextInput(label='ZEN API Key',
                                   placeholder='Enter your ZEN API key',
                                   required=False,
@@ -1068,7 +1062,6 @@ class ConfigModal(Modal):
 
     async def on_submit(self, interaction: discord.Interaction):
         ace_key = self.ace_bypass_key_input.value.strip()
-        trw_key = self.trw_api_key_input.value.strip()
         zen_key = self.zen_api_key_input.value.strip()
         eas_key = self.eas_api_key_input.value.strip()
         bypass_vip_key = self.bypass_vip_key_input.value.strip()
@@ -1092,14 +1085,6 @@ class ConfigModal(Modal):
             bypass_provider.set_api_key('ace-bypass', ace_key)
             updated.append('Ace Bypass')
 
-        if trw_key:
-            set_key(env_file, 'TRW_API_KEY', trw_key)
-            os.environ['TRW_API_KEY'] = trw_key
-            global TRW_API_KEY
-            TRW_API_KEY = trw_key
-            bypass_provider.set_api_key('trw-bypass', trw_key)
-            updated.append('TRW Bypass')
-
         if zen_key:
             set_key(env_file, 'ZEN_API_KEY', zen_key)
             os.environ['ZEN_API_KEY'] = zen_key
@@ -1120,7 +1105,7 @@ class ConfigModal(Modal):
             await interaction.response.send_message(embed=discord.Embed(
                 title="✅ Configuration Updated",
                 description=
-                f"Successfully updated: {', '.join(updated)}\n\nAll 5 APIs will be tried in order:\nBypass VIP → Ace → TRW → ZEN → EAS-X",
+                f"Successfully updated: {', '.join(updated)}\n\nAll 4 APIs will be tried in order:\nBypass VIP → Ace → ZEN → EAS-X",
                 color=discord.Color.green()).set_footer(text="Bypass Bot"),
                                                     ephemeral=True)
         else:
@@ -1650,7 +1635,7 @@ async def credits_command(interaction: discord.Interaction):
     
     embed.add_field(
         name="🔌 APIs & Services",
-        value="• **Ace Bypass** - https://ace-bypass.com\n• **TRW Bypass** - trw.lat\n• **ZEN Bypass** - zen.gbrl.org\n• **EAS-X** - eas-x.com",
+        value="• **Bypass VIP** - bypass.vip\n• **Ace Bypass** - ace-bypass.com\n• **ZEN Bypass** - zen.gbrl.org\n• **EAS-X** - eas-x.com",
         inline=False)
     
     embed.add_field(
@@ -2257,12 +2242,11 @@ if __name__ == "__main__":
     print("🔑 API Keys Status:")
     print(f"   Bypass VIP:       {'✓ Configured' if BYPASS_VIP_API_KEY else '○ Not Set'}")
     print(f"   Ace Bypass:       {'✓ Configured' if BYPASS_API_KEY else '○ Not Set'}")
-    print(f"   TRW Bypass:       {'✓ Configured' if TRW_API_KEY else '○ Not Set'}")
     print(f"   ZEN Bypass:       {'✓ Configured' if ZEN_API_KEY else '○ Not Set'}")
     print(f"   EAS-X Bypass:     {'✓ Configured' if EAS_API_KEY else '○ Not Set'}")
     print(f"   OpenAI:           {'✓ Configured' if OPENAI_API_KEY else '○ Not Set'}")
     print()
-    print("⚡ Fallback Chain: Bypass VIP → Ace → TRW → ZEN → EAS-X")
+    print("⚡ Fallback Chain: Bypass VIP → Ace → ZEN → EAS-X")
     print("=" * 60)
     print()
 

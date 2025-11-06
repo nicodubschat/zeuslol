@@ -11,7 +11,7 @@ class BypassProvider:
         self.eas_api_key = eas_api_key or os.getenv('EAS_API_KEY')
         self.bypass_vip_api_key = bypass_vip_api_key or os.getenv('BYPASS_VIP_API_KEY')
     
-    async def bypass(self, link: str, session: aiohttp.ClientSession, timeout: int = 30) -> dict:
+    async def bypass(self, link: str, session: aiohttp.ClientSession, timeout: int = 15) -> dict:
         encoded_link = quote(link)
         errors = []
         
@@ -33,16 +33,7 @@ class BypassProvider:
             else:
                 errors.append(f"Ace Bypass: {result.get('error', 'Unknown error')}")
         
-        # Fallback to TRW Bypass if previous attempts failed or weren't available
-        if self.trw_api_key:
-            trw_url = f"https://trw.lat/api/bypass?url={encoded_link}"
-            result = await self._try_api_get(trw_url, session, timeout, 'TRW Bypass', headers={'x-api-key': self.trw_api_key})
-            if result['success']:
-                return result
-            else:
-                errors.append(f"TRW Bypass: {result.get('error', 'Unknown error')}")
-        
-        # Fallback to ZEN API if TRW failed or wasn't available
+        # Fallback to ZEN API if previous attempts failed or weren't available
         if self.zen_api_key:
             zen_url = f"https://zen.gbrl.org/v1/bypass?url={encoded_link}"
             result = await self._try_api_get(zen_url, session, timeout, 'ZEN Bypass', headers={'x-api-key': self.zen_api_key})
@@ -190,7 +181,7 @@ class BypassProvider:
     
     def get_api_status(self) -> dict:
         status = {
-            'active': 'Multi-API (Bypass VIP → Ace → TRW → ZEN → EAS-X fallback)',
+            'active': 'Multi-API (Bypass VIP → Ace → ZEN → EAS-X fallback)',
             'providers': {
                 'bypass-vip': {
                     'name': 'Bypass VIP',
@@ -205,13 +196,6 @@ class BypassProvider:
                     'requires_key': True,
                     'has_key': bool(self.bypass_api_key),
                     'ready': bool(self.bypass_api_key)
-                },
-                'trw-bypass': {
-                    'name': 'TRW Bypass',
-                    'enabled': True,
-                    'requires_key': True,
-                    'has_key': bool(self.trw_api_key),
-                    'ready': bool(self.trw_api_key)
                 },
                 'zen-bypass': {
                     'name': 'ZEN Bypass',
