@@ -11,6 +11,9 @@ class BypassProvider:
         self.bypass_vip_api_key = bypass_vip_api_key or os.getenv('BYPASS_VIP_API_KEY')
     
     async def bypass(self, link: str, session: aiohttp.ClientSession, timeout: int = 15) -> dict:
+        import time as time_module
+        start_time = time_module.time()
+        
         encoded_link = quote(link)
         errors = []
         
@@ -19,6 +22,7 @@ class BypassProvider:
             bypass_vip_url = f"https://api.bypass.vip/premium/bypass?url={encoded_link}"
             result = await self._try_api_get(bypass_vip_url, session, timeout, 'Bypass VIP', headers={'x-api-key': self.bypass_vip_api_key})
             if result['success']:
+                result['bypass_time'] = round(time_module.time() - start_time, 2)
                 return result
             else:
                 errors.append(f"Bypass VIP: {result.get('error', 'Unknown error')}")
@@ -28,6 +32,7 @@ class BypassProvider:
             ace_url = f"http://ace-bypass.com/api/bypass?url={encoded_link}&apikey={self.bypass_api_key}"
             result = await self._try_api_get(ace_url, session, timeout, 'Ace Bypass')
             if result['success']:
+                result['bypass_time'] = round(time_module.time() - start_time, 2)
                 return result
             else:
                 errors.append(f"Ace Bypass: {result.get('error', 'Unknown error')}")
@@ -37,6 +42,7 @@ class BypassProvider:
             zen_url = f"https://zen.gbrl.org/v1/bypass?url={encoded_link}"
             result = await self._try_api_get(zen_url, session, timeout, 'ZEN Bypass', headers={'x-api-key': self.zen_api_key})
             if result['success']:
+                result['bypass_time'] = round(time_module.time() - start_time, 2)
                 return result
             else:
                 errors.append(f"ZEN Bypass: {result.get('error', 'Unknown error')}")
@@ -48,6 +54,7 @@ class BypassProvider:
                                              headers={'eas-api-key': self.eas_api_key},
                                              json_data={'url': link})
             if result['success']:
+                result['bypass_time'] = round(time_module.time() - start_time, 2)
                 return result
             else:
                 errors.append(f"EAS-X Bypass: {result.get('error', 'Unknown error')}")
@@ -57,7 +64,8 @@ class BypassProvider:
         return {
             'success': False,
             'error': error_msg,
-            'api_name': 'All providers failed'
+            'api_name': 'All providers failed',
+            'bypass_time': round(time_module.time() - start_time, 2)
         }
     
     async def _try_api_get(self, api_url: str, session: aiohttp.ClientSession, timeout: int, api_name: str, headers: Optional[Dict] = None) -> dict:

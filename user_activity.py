@@ -16,7 +16,8 @@ class UserActivity:
             print(f"Error loading user activity: {e}")
         return {
             'blacklisted_users': [],
-            'blacklisted_hwids': []
+            'blacklisted_hwids': [],
+            'whitelisted_users': []
         }
     
     def save_data(self):
@@ -58,10 +59,38 @@ class UserActivity:
             return True
         return False
     
+    def whitelist_user(self, user_id: int) -> bool:
+        if user_id not in self.data.get('whitelisted_users', []):
+            if 'whitelisted_users' not in self.data:
+                self.data['whitelisted_users'] = []
+            self.data['whitelisted_users'].append(user_id)
+            if user_id in self.data.get('blacklisted_users', []):
+                self.data['blacklisted_users'].remove(user_id)
+            self.save_data()
+            return True
+        return False
+    
+    def unwhitelist_user(self, user_id: int) -> bool:
+        if user_id in self.data.get('whitelisted_users', []):
+            self.data['whitelisted_users'].remove(user_id)
+            self.save_data()
+            return True
+        return False
+    
+    def is_blacklisted(self, user_id: int) -> bool:
+        if user_id in self.data.get('whitelisted_users', []):
+            return False
+        return user_id in self.data.get('blacklisted_users', [])
+    
+    def is_whitelisted(self, user_id: int) -> bool:
+        return user_id in self.data.get('whitelisted_users', [])
+    
     def get_blacklist_data(self):
         return {
             'total_users': len(self.data.get('blacklisted_users', [])),
             'total_hwids': len(self.data.get('blacklisted_hwids', [])),
+            'total_whitelisted': len(self.data.get('whitelisted_users', [])),
             'user_ids': self.data.get('blacklisted_users', []),
-            'hwids': self.data.get('blacklisted_hwids', [])
+            'hwids': self.data.get('blacklisted_hwids', []),
+            'whitelisted_ids': self.data.get('whitelisted_users', [])
         }

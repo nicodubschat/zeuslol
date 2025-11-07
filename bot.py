@@ -37,8 +37,54 @@ STATS_FILE = 'bypass_stats.json'
 LOG_CHANNELS_FILE = 'log_channels.json'
 SERVICE_PREFERENCES_FILE = 'service_preferences.json'
 PANEL_MESSAGES_FILE = 'panel_messages.json'
+API_CONFIG_FILE = 'api_config.json'
+
+JOIN_SERVER_URL = "https://discord.gg/zeuslol"
+INVITE_BOT_URL = "https://discord.com/oauth2/authorize?client_id=1420190348667392040"
 
 bot_start_time = None
+
+
+def load_api_config():
+    """Load saved API keys from config file"""
+    try:
+        if os.path.exists(API_CONFIG_FILE):
+            with open(API_CONFIG_FILE, 'r') as f:
+                return json.load(f)
+    except Exception as e:
+        print(f"Error loading API config: {e}")
+    return {}
+
+
+def save_api_config(config: dict):
+    """Save API keys to config file"""
+    try:
+        with open(API_CONFIG_FILE, 'w') as f:
+            json.dump(config, f, indent=2)
+    except Exception as e:
+        print(f"Error saving API config: {e}")
+
+
+def create_embed(title: str, description: str, color: discord.Color, requester: discord.User = None) -> discord.Embed:
+    """Create a styled embed with bold formatting and custom footer"""
+    embed = discord.Embed(title=f"**{title}**", description=description, color=color)
+    footer_text = "Made by zeus ❤️"
+    if requester:
+        embed.set_footer(text=f"Requested by {requester.name} • {footer_text}", icon_url=requester.display_avatar.url if requester else None)
+    else:
+        embed.set_footer(text=footer_text)
+    return embed
+
+
+def add_action_buttons(view: View, copy_content: str = None, copy_type: str = None):
+    """Add standard action buttons (join server, invite bot, and optionally copy button)"""
+    if copy_content and copy_type:
+        view.add_item(CopyContentButton(copy_content, copy_type))
+    
+    view.add_item(Button(label="Join Server", style=discord.ButtonStyle.link, url=JOIN_SERVER_URL, emoji="💬"))
+    view.add_item(Button(label="Add Bot", style=discord.ButtonStyle.link, url=INVITE_BOT_URL, emoji="🤖"))
+    
+    return view
 
 
 def load_log_channels():
@@ -177,12 +223,20 @@ bypass_stats = load_stats()
 log_channels = load_log_channels()
 panel_messages = load_panel_messages()
 
+api_config = load_api_config()
+BYPASS_API_KEY = api_config.get('ace_key') or BYPASS_API_KEY
+ZEN_API_KEY = api_config.get('zen_key') or ZEN_API_KEY
+EAS_API_KEY = api_config.get('eas_key') or EAS_API_KEY
+BYPASS_VIP_API_KEY = api_config.get('bypass_vip_key') or BYPASS_VIP_API_KEY
+
 ai_service = AIService(OPENAI_API_KEY) if OPENAI_API_KEY else None
 cache_manager = CacheManager(ttl_minutes=30)
 rate_limiter = RateLimiter(max_requests=10, time_window=60)
 hwid_service = HWIDService()
 user_activity = UserActivity()
 bypass_provider = BypassProvider(BYPASS_API_KEY, ZEN_API_KEY, EAS_API_KEY, BYPASS_VIP_API_KEY)
+
+shared_session: Optional[aiohttp.ClientSession] = None
 
 SUPPORTED_SERVICES = [
     "codex", "trigon", "rekonise", "linkvertise", "paster-so", "cuttlinks",
@@ -408,7 +462,7 @@ def get_service_emoji(service: str) -> str:
 
 async def log_bypass_to_channel(user: Union[discord.User, discord.Member],
                                 guild: discord.Guild, link: str,
-                                time_taken: float, result_type: str):
+                                time_taken: float, result_type: str, api_name: str = "Unknown"):
     global log_channels
     try:
         if guild.id in log_channels:
@@ -416,27 +470,27 @@ async def log_bypass_to_channel(user: Union[discord.User, discord.Member],
             log_channel = guild.get_channel(log_channel_id)
 
             if log_channel and isinstance(log_channel, discord.TextChannel):
-                embed = discord.Embed(title="📝 Bypass Log",
+                embed = discord.Embed(title="**📝 Bypass Log**",
                                       color=discord.Color.blue(),
                                       timestamp=datetime.utcnow())
 
-                embed.add_field(name="👤 User", value=user.mention, inline=True)
+                embed.add_field(name="**👤 User**", value=user.mention, inline=True)
 
-                embed.add_field(name="⏱️ Time Taken",
-                                value=f"{time_taken}s",
+                embed.add_field(name="**⏱️ Time Taken**",
+                                value=f"**{time_taken}s**",
                                 inline=True)
 
-                embed.add_field(name="📊 Total Bypasses",
-                                value=f"{bypass_stats['total_bypassed']:,}",
+                embed.add_field(name="**🔧 API Used**",
+                                value=f"**{api_name}**",
                                 inline=True)
 
                 embed.add_field(
-                    name="🔗 Link",
+                    name="**🔗 Link**",
                     value=f"`{link[:100]}{'...' if len(link) > 100 else ''}`",
                     inline=False)
 
-                embed.add_field(name="📋 Result Type",
-                                value=result_type.title(),
+                embed.add_field(name="**📋 Result Type**",
+                                value=f"**{result_type.title()}**",
                                 inline=True)
 
                 embed.set_footer(text="Bypass Bot Logger")
@@ -472,103 +526,106 @@ async def bypass_link(link: str, use_cache: bool = True) -> dict:
             return cached_result
 
     try:
-        async with aiohttp.ClientSession() as session:
-            api_response = await bypass_provider.bypass(link, session)
-            time_taken = round(time.time() - start_time, 2)
+        global shared_session
+        if shared_session is None or shared_session.closed:
+            shared_session = aiohttp.ClientSession()
+        
+        api_response = await bypass_provider.bypass(link, shared_session)
+        time_taken = round(time.time() - start_time, 2)
 
-            if not api_response['success']:
-                bypass_stats['failed'] += 1
-                save_stats(bypass_stats)
-                return {
-                    'success': False,
-                    'error': api_response.get('error', 'Unknown error'),
-                    'time_taken': time_taken,
-                    'from_cache': False,
-                    'api_name': api_response.get('api_name')
-                }
+        if not api_response['success']:
+            bypass_stats['failed'] += 1
+            save_stats(bypass_stats)
+            return {
+                'success': False,
+                'error': api_response.get('error', 'Unknown error'),
+                'time_taken': time_taken,
+                'from_cache': False,
+                'api_name': api_response.get('api_name')
+            }
 
-            loadstring = api_response.get('loadstring')
-            bypassed_url = api_response.get('bypassed_url')
+        loadstring = api_response.get('loadstring')
+        bypassed_url = api_response.get('bypassed_url')
 
-            if contains_junkie(str(loadstring)) or contains_junkie(
-                    str(bypassed_url)):
-                bypass_stats['junkie_blocked'] = bypass_stats.get(
-                    'junkie_blocked', 0) + 1
-                save_stats(bypass_stats)
-                return {
-                    'success': False,
-                    'error': 'Junkie links are not supported anymore',
-                    'is_junkie': True,
-                    'time_taken': time_taken,
-                    'from_cache': False
-                }
+        if contains_junkie(str(loadstring)) or contains_junkie(
+                str(bypassed_url)):
+            bypass_stats['junkie_blocked'] = bypass_stats.get(
+                'junkie_blocked', 0) + 1
+            save_stats(bypass_stats)
+            return {
+                'success': False,
+                'error': 'Junkie links are not supported anymore',
+                'is_junkie': True,
+                'time_taken': time_taken,
+                'from_cache': False
+            }
 
-            result = None
-            if loadstring:
+        result = None
+        if loadstring:
+            bypass_stats['total_bypassed'] += 1
+            bypass_stats['loadstrings'] += 1
+            service = get_service_name(link)
+            bypass_stats['service_stats'][service] = bypass_stats[
+                'service_stats'].get(service, 0) + 1
+            save_stats(bypass_stats)
+
+            result = {
+                'success': True,
+                'type': 'loadstring',
+                'result': loadstring,
+                'original_link': link,
+                'time_taken': time_taken,
+                'from_cache': False,
+                'api_name': api_response.get('api_name')
+            }
+        elif bypassed_url:
+            if bypassed_url.lower().startswith(
+                ('loadstring(', 'game:', 'local ', 'function ',
+                 'return ')):
                 bypass_stats['total_bypassed'] += 1
                 bypass_stats['loadstrings'] += 1
                 service = get_service_name(link)
-                bypass_stats['service_stats'][service] = bypass_stats[
-                    'service_stats'].get(service, 0) + 1
+                bypass_stats['service_stats'][
+                    service] = bypass_stats['service_stats'].get(
+                        service, 0) + 1
                 save_stats(bypass_stats)
 
                 result = {
                     'success': True,
                     'type': 'loadstring',
-                    'result': loadstring,
+                    'result': bypassed_url,
                     'original_link': link,
                     'time_taken': time_taken,
                     'from_cache': False,
                     'api_name': api_response.get('api_name')
                 }
-            elif bypassed_url:
-                if bypassed_url.lower().startswith(
-                    ('loadstring(', 'game:', 'local ', 'function ',
-                     'return ')):
-                    bypass_stats['total_bypassed'] += 1
-                    bypass_stats['loadstrings'] += 1
-                    service = get_service_name(link)
-                    bypass_stats['service_stats'][
-                        service] = bypass_stats['service_stats'].get(
-                            service, 0) + 1
-                    save_stats(bypass_stats)
-
-                    result = {
-                        'success': True,
-                        'type': 'loadstring',
-                        'result': bypassed_url,
-                        'original_link': link,
-                        'time_taken': time_taken,
-                        'from_cache': False,
-                        'api_name': api_response.get('api_name')
-                    }
-                else:
-                    bypass_stats['total_bypassed'] += 1
-                    bypass_stats['urls'] += 1
-                    service = get_service_name(link)
-                    bypass_stats['service_stats'][
-                        service] = bypass_stats['service_stats'].get(
-                            service, 0) + 1
-                    save_stats(bypass_stats)
-
-                    result = {
-                        'success': True,
-                        'type': 'url',
-                        'result': bypassed_url,
-                        'original_link': link,
-                        'time_taken': time_taken,
-                        'from_cache': False,
-                        'api_name': api_response.get('api_name')
-                    }
-
-            if result and use_cache:
-                cache_manager.set(link, result)
-
-            if result:
-                return result
             else:
-                bypass_stats['failed'] += 1
+                bypass_stats['total_bypassed'] += 1
+                bypass_stats['urls'] += 1
+                service = get_service_name(link)
+                bypass_stats['service_stats'][
+                    service] = bypass_stats['service_stats'].get(
+                        service, 0) + 1
                 save_stats(bypass_stats)
+
+                result = {
+                    'success': True,
+                    'type': 'url',
+                    'result': bypassed_url,
+                    'original_link': link,
+                    'time_taken': time_taken,
+                    'from_cache': False,
+                    'api_name': api_response.get('api_name')
+                }
+
+        if result and use_cache:
+            cache_manager.set(link, result)
+
+        if result:
+            return result
+        else:
+            bypass_stats['failed'] += 1
+            save_stats(bypass_stats)
                 return {
                     'success': False,
                     'error': f'No result from API',
@@ -590,9 +647,10 @@ async def bypass_link(link: str, use_cache: bool = True) -> dict:
 class CopyContentButton(discord.ui.Button):
 
     def __init__(self, content: str, content_type: str):
-        super().__init__(label=f"📋 Copy {content_type}",
+        super().__init__(label=f"Copy {content_type}",
                          style=discord.ButtonStyle.primary,
-                         custom_id=f"copy_{content_type.lower()}")
+                         custom_id=f"copy_{content_type.lower()}",
+                         emoji="📋")
         self.content = content
         self.content_type = content_type
 
@@ -651,9 +709,12 @@ class CopyButtonView(View):
         self.add_item(CopyContentButton(content, content_type))
         if url and url.startswith(('http://', 'https://')):
             self.add_item(
-                Button(label="🔗 Open Link",
+                Button(label="Open Link",
                        style=discord.ButtonStyle.link,
-                       url=url))
+                       url=url,
+                       emoji="🔗"))
+        self.add_item(Button(label="Join Server", style=discord.ButtonStyle.link, url=JOIN_SERVER_URL, emoji="💬"))
+        self.add_item(Button(label="Add Bot", style=discord.ButtonStyle.link, url=INVITE_BOT_URL, emoji="🤖"))
 
 
 class CopyLinkView(View):
@@ -662,9 +723,12 @@ class CopyLinkView(View):
         super().__init__(timeout=None)
         self.add_item(CopyContentButton(bypassed_url, "Link"))
         self.add_item(
-            Button(label="🔗 Open Bypassed Link",
+            Button(label="Open Bypassed Link",
                    style=discord.ButtonStyle.link,
-                   url=bypassed_url))
+                   url=bypassed_url,
+                   emoji="🔗"))
+        self.add_item(Button(label="Join Server", style=discord.ButtonStyle.link, url=JOIN_SERVER_URL, emoji="💬"))
+        self.add_item(Button(label="Add Bot", style=discord.ButtonStyle.link, url=INVITE_BOT_URL, emoji="🤖"))
 
 
 class BypassModal(Modal):
@@ -678,6 +742,16 @@ class BypassModal(Modal):
         super().__init__(title='🔓 Bypass Link')
 
     async def on_submit(self, interaction: discord.Interaction):
+        if user_activity.is_blacklisted(interaction.user.id):
+            embed = create_embed(
+                "🚫 Access Denied",
+                "**You are blacklisted from using this bot.**\n\nIf you believe this is an error, please contact the bot owner.",
+                discord.Color.red(),
+                interaction.user
+            )
+            await interaction.response.send_message(embed=embed, ephemeral=True)
+            return
+        
         link_to_bypass = self.link_input.value.strip()
 
         service_name = get_service_name(link_to_bypass)
@@ -686,11 +760,11 @@ class BypassModal(Modal):
         start_time = time.time()
 
         loading_embed = discord.Embed(
-            title=f"{service_emoji} Bypassing {service_name.title()}",
+            title=f"**{service_emoji} Bypassing {service_name.title()}**",
             description=
-            f":loading: **Processing your link...**\n\n`{link_to_bypass[:80]}{'...' if len(link_to_bypass) > 80 else ''}`\n\n🕐 **Elapsed:** 0.0s",
+            f"**<a:loading:0> Processing your link...**\n\n`{link_to_bypass[:80]}{'...' if len(link_to_bypass) > 80 else ''}`\n\n**🕐 Elapsed:** 0.0s",
             color=discord.Color.blue())
-        loading_embed.set_footer(text="Bypass Bot • Hang tight!")
+        loading_embed.set_footer(text=f"Requested by {interaction.user.name} • Made by zeus ❤️", icon_url=interaction.user.display_avatar.url)
 
         await interaction.response.send_message(embed=loading_embed)
 
@@ -706,7 +780,7 @@ class BypassModal(Modal):
             for i in range(30):
                 await asyncio.sleep(0.5)
                 elapsed = round(time.time() - start_time, 1)
-                loading_embed.description = f":loading: **Processing your link...**\n\n`{link_to_bypass[:80]}{'...' if len(link_to_bypass) > 80 else ''}`\n\n🕐 **Elapsed:** {elapsed}s"
+                loading_embed.description = f"**<a:loading:0> Processing your link...**\n\n`{link_to_bypass[:80]}{'...' if len(link_to_bypass) > 80 else ''}`\n\n**🕐 Elapsed:** {elapsed}s"
                 try:
                     await interaction.edit_original_response(
                         embed=loading_embed)
@@ -725,7 +799,8 @@ class BypassModal(Modal):
                 await log_bypass_to_channel(interaction.user,
                                             interaction.guild, link_to_bypass,
                                             result['time_taken'],
-                                            result['type'])
+                                            result['type'],
+                                            result.get('api_name', 'Unknown'))
 
             cache_indicator = "⚡ From Cache" if result.get(
                 'from_cache') else "✨ Fresh Result"
@@ -741,25 +816,25 @@ class BypassModal(Modal):
             if result['type'] == 'loadstring':
                 loadstring = result['result']
                 embed = discord.Embed(
-                    title="✅ Loadstring Retrieved Successfully",
+                    title="**✅ Loadstring Retrieved Successfully**",
                     description=
-                    f"**Original Link:**\n`{link_to_bypass[:100]}`\n\n⏱️ **Time Taken:** {result['time_taken']}s\n{cache_indicator}\n{api_info}{work_ink_note}\n\n💡 **Click the button below to copy the full loadstring!**",
+                    f"**Original Link:**\n`{link_to_bypass[:100]}`\n\n**⏱️ Time Taken:** {result['time_taken']}s\n{cache_indicator}\n{api_info}{work_ink_note}\n\n**💡 Click the button below to copy the full loadstring!**",
                     color=discord.Color.green())
 
                 if len(loadstring) <= 500:
-                    embed.add_field(name="📋 Loadstring Preview",
+                    embed.add_field(name="**📋 Loadstring Preview**",
                                     value=f"```lua\n{loadstring}\n```",
                                     inline=False)
                 else:
                     preview = loadstring[:500]
                     embed.add_field(
                         name=
-                        "📋 Loadstring Preview (Click Copy Button for Full Script)",
+                        "**📋 Loadstring Preview (Click Copy Button for Full Script)**",
                         value=
                         f"```lua\n{preview}...\n```\n*Preview only. Full script is {len(loadstring)} characters.*",
                         inline=False)
 
-                embed.set_footer(text="Bypass Bot | Powered by: https://ace-bypass.com • eas-x.com")
+                embed.set_footer(text=f"Requested by {interaction.user.name} • Made by zeus ❤️", icon_url=interaction.user.display_avatar.url)
 
                 view = CopyButtonView(loadstring, "Loadstring")
                 await interaction.edit_original_response(embed=embed,
@@ -767,11 +842,11 @@ class BypassModal(Modal):
             elif result['type'] == 'url':
                 bypassed_url = result['result']
                 embed = discord.Embed(
-                    title="✅ Link Bypassed Successfully",
+                    title="**✅ Link Bypassed Successfully**",
                     description=
-                    f"**Original Link:**\n`{link_to_bypass[:100]}`\n\n**Bypassed Link:**\n`{bypassed_url}`\n\n⏱️ **Time Taken:** {result['time_taken']}s\n{cache_indicator}\n{api_info}{work_ink_note}",
+                    f"**Original Link:**\n`{link_to_bypass[:100]}`\n\n**Bypassed Link:**\n`{bypassed_url}`\n\n**⏱️ Time Taken:** {result['time_taken']}s\n{cache_indicator}\n{api_info}{work_ink_note}",
                     color=discord.Color.green())
-                embed.set_footer(text="Bypass Bot | Powered by: https://ace-bypass.com • eas-x.com")
+                embed.set_footer(text=f"Requested by {interaction.user.name} • Made by zeus ❤️", icon_url=interaction.user.display_avatar.url)
 
                 view = CopyLinkView(bypassed_url)
                 await interaction.edit_original_response(embed=embed,
@@ -842,7 +917,7 @@ class PanelBypassModal(Modal):
             for i in range(30):
                 await asyncio.sleep(0.5)
                 elapsed = round(time.time() - start_time, 1)
-                loading_embed.description = f":loading: **Processing your link...**\n\n`{link_to_bypass[:80]}{'...' if len(link_to_bypass) > 80 else ''}`\n\n🕐 **Elapsed:** {elapsed}s"
+                loading_embed.description = f"**<a:loading:0> Processing your link...**\n\n`{link_to_bypass[:80]}{'...' if len(link_to_bypass) > 80 else ''}`\n\n**🕐 Elapsed:** {elapsed}s"
                 try:
                     await interaction.edit_original_response(
                         embed=loading_embed)
@@ -861,7 +936,8 @@ class PanelBypassModal(Modal):
                 await log_bypass_to_channel(interaction.user,
                                             interaction.guild, link_to_bypass,
                                             result['time_taken'],
-                                            result['type'])
+                                            result['type'],
+                                            result.get('api_name', 'Unknown'))
 
             cache_indicator = "⚡ From Cache" if result.get(
                 'from_cache') else "✨ Fresh Result"
@@ -1058,6 +1134,15 @@ class ConfigModal(Modal):
 
     def __init__(self):
         super().__init__(title='⚙️ Configure Bypass API Keys')
+        api_config = load_api_config()
+        if api_config.get('bypass_vip_key'):
+            self.bypass_vip_key_input.default = api_config['bypass_vip_key']
+        if api_config.get('ace_key'):
+            self.ace_bypass_key_input.default = api_config['ace_key']
+        if api_config.get('zen_key'):
+            self.zen_api_key_input.default = api_config['zen_key']
+        if api_config.get('eas_key'):
+            self.eas_api_key_input.default = api_config['eas_key']
 
     async def on_submit(self, interaction: discord.Interaction):
         ace_key = self.ace_bypass_key_input.value.strip()
@@ -1066,6 +1151,7 @@ class ConfigModal(Modal):
         bypass_vip_key = self.bypass_vip_key_input.value.strip()
 
         env_file = '.env'
+        api_config = load_api_config()
         updated = []
 
         if bypass_vip_key:
@@ -1074,6 +1160,7 @@ class ConfigModal(Modal):
             global BYPASS_VIP_API_KEY, bypass_provider
             BYPASS_VIP_API_KEY = bypass_vip_key
             bypass_provider.set_api_key('bypass-vip', bypass_vip_key)
+            api_config['bypass_vip_key'] = bypass_vip_key
             updated.append('Bypass VIP')
 
         if ace_key:
@@ -1082,6 +1169,7 @@ class ConfigModal(Modal):
             global BYPASS_API_KEY
             BYPASS_API_KEY = ace_key
             bypass_provider.set_api_key('ace-bypass', ace_key)
+            api_config['ace_key'] = ace_key
             updated.append('Ace Bypass')
 
         if zen_key:
@@ -1090,6 +1178,7 @@ class ConfigModal(Modal):
             global ZEN_API_KEY
             ZEN_API_KEY = zen_key
             bypass_provider.set_api_key('zen-bypass', zen_key)
+            api_config['zen_key'] = zen_key
             updated.append('ZEN Bypass')
 
         if eas_key:
@@ -1098,14 +1187,17 @@ class ConfigModal(Modal):
             global EAS_API_KEY
             EAS_API_KEY = eas_key
             bypass_provider.set_api_key('eas-bypass', eas_key)
+            api_config['eas_key'] = eas_key
             updated.append('EAS-X Bypass')
+
+        save_api_config(api_config)
 
         if updated:
             await interaction.response.send_message(embed=discord.Embed(
-                title="✅ Configuration Updated",
+                title="**✅ Configuration Updated**",
                 description=
-                f"Successfully updated: {', '.join(updated)}\n\nAll 4 APIs will be tried in order:\nBypass VIP → Ace → ZEN → EAS-X",
-                color=discord.Color.green()).set_footer(text="Bypass Bot"),
+                f"**Successfully updated:** {', '.join(updated)}\n\n**All 4 APIs will be tried in order:**\nBypass VIP → Ace → ZEN → EAS-X",
+                color=discord.Color.green()).set_footer(text="Made by zeus ❤️"),
                                                     ephemeral=True)
         else:
             await interaction.response.send_message(embed=discord.Embed(
@@ -1874,9 +1966,9 @@ async def setlogs_command(interaction: discord.Interaction,
 
 
 @bot.tree.command(name="blacklist",
-                  description="[ADMIN] Manage user blacklist")
-@app_commands.describe(action="Action to perform: add, remove, or list",
-                       user="User to blacklist/unblacklist",
+                  description="[ADMIN] Manage user blacklist and whitelist")
+@app_commands.describe(action="Action to perform: add, remove, whitelist, or list",
+                       user="User to blacklist/unblacklist/whitelist",
                        hwid="HWID to blacklist/unblacklist")
 async def blacklist_command(interaction: discord.Interaction,
                             action: str,
@@ -1895,9 +1987,9 @@ async def blacklist_command(interaction: discord.Interaction,
     if action == "list":
         blacklist_data = user_activity.get_blacklist_data()
         embed = discord.Embed(
-            title="🚫 Blacklist",
+            title="**🚫 Blacklist & ✅ Whitelist**",
             description=
-            f"**Total Blacklisted Users:** {blacklist_data['total_users']}\n**Total Blacklisted HWIDs:** {blacklist_data['total_hwids']}",
+            f"**Total Blacklisted Users:** {blacklist_data['total_users']}\n**Total Whitelisted Users:** {blacklist_data['total_whitelisted']}\n**Total Blacklisted HWIDs:** {blacklist_data['total_hwids']}",
             color=discord.Color.red())
 
         if blacklist_data['user_ids']:
@@ -1905,17 +1997,27 @@ async def blacklist_command(interaction: discord.Interaction,
                 f"<@{uid}> (`{uid}`)"
                 for uid in blacklist_data['user_ids'][:10]
             ])
-            embed.add_field(name="🔒 Blacklisted Users",
+            embed.add_field(name="**🔒 Blacklisted Users**",
                             value=users_text,
+                            inline=False)
+
+        if blacklist_data['whitelisted_ids']:
+            whitelist_text = "\n".join([
+                f"<@{uid}> (`{uid}`)"
+                for uid in blacklist_data['whitelisted_ids'][:10]
+            ])
+            embed.add_field(name="**✅ Whitelisted Users**",
+                            value=whitelist_text,
                             inline=False)
 
         if blacklist_data['hwids']:
             hwids_text = "\n".join(
                 [f"`{hwid}`" for hwid in blacklist_data['hwids'][:10]])
-            embed.add_field(name="🔑 Blacklisted HWIDs",
+            embed.add_field(name="**🔑 Blacklisted HWIDs**",
                             value=hwids_text,
                             inline=False)
 
+        embed.set_footer(text="Made by zeus ❤️")
         await interaction.response.send_message(embed=embed, ephemeral=True)
         return
 
@@ -1993,6 +2095,34 @@ async def blacklist_command(interaction: discord.Interaction,
                 "Please provide either a user or HWID to unblacklist.",
                 color=discord.Color.red()),
                                                     ephemeral=True)
+    elif action == "whitelist":
+        if user:
+            if user_activity.whitelist_user(user.id):
+                await interaction.response.send_message(embed=discord.Embed(
+                    title="**✅ User Whitelisted**",
+                    description=
+                    f"Successfully whitelisted {user.mention} (`{user.id}`).\n\n**Whitelisted users bypass all blacklist restrictions.**",
+                    color=discord.Color.green()).set_footer(text="Made by zeus ❤️"),
+                                                        ephemeral=True)
+            else:
+                await interaction.response.send_message(embed=discord.Embed(
+                    title="ℹ️ Already Whitelisted",
+                    description=f"{user.mention} is already whitelisted.",
+                    color=discord.Color.blue()).set_footer(text="Made by zeus ❤️"),
+                                                        ephemeral=True)
+        else:
+            await interaction.response.send_message(embed=discord.Embed(
+                title="❌ Missing Parameter",
+                description="Please provide a user to whitelist.",
+                color=discord.Color.red()).set_footer(text="Made by zeus ❤️"),
+                                                    ephemeral=True)
+    else:
+        await interaction.response.send_message(embed=discord.Embed(
+            title="❌ Invalid Action",
+            description=
+            "**Valid actions:** `add`, `remove`, `whitelist`, `list`",
+            color=discord.Color.red()).set_footer(text="Made by zeus ❤️"),
+                                                ephemeral=True)
 
 
 @bot.tree.command(
