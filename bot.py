@@ -26,7 +26,6 @@ load_dotenv()
 
 DISCORD_BOT_TOKEN = os.getenv('DISCORD_BOT_TOKEN')
 BYPASS_API_KEY = os.getenv('BYPASS_API_KEY')
-TRW_API_KEY = os.getenv('TRW_API_KEY')
 ZEN_API_KEY = os.getenv('ZEN_API_KEY')
 EAS_API_KEY = os.getenv('EAS_API_KEY')
 BYPASS_VIP_API_KEY = os.getenv('BYPASS_VIP_API_KEY')
@@ -183,7 +182,7 @@ cache_manager = CacheManager(ttl_minutes=30)
 rate_limiter = RateLimiter(max_requests=10, time_window=60)
 hwid_service = HWIDService()
 user_activity = UserActivity()
-bypass_provider = BypassProvider(BYPASS_API_KEY, None, ZEN_API_KEY, EAS_API_KEY, BYPASS_VIP_API_KEY)
+bypass_provider = BypassProvider(BYPASS_API_KEY, ZEN_API_KEY, EAS_API_KEY, BYPASS_VIP_API_KEY)
 
 SUPPORTED_SERVICES = [
     "codex", "trigon", "rekonise", "linkvertise", "paster-so", "cuttlinks",
@@ -760,7 +759,7 @@ class BypassModal(Modal):
                         f"```lua\n{preview}...\n```\n*Preview only. Full script is {len(loadstring)} characters.*",
                         inline=False)
 
-                embed.set_footer(text="Bypass Bot | Powered by: https://ace-bypass.com • trw.lat • eas-x.com")
+                embed.set_footer(text="Bypass Bot | Powered by: https://ace-bypass.com • eas-x.com")
 
                 view = CopyButtonView(loadstring, "Loadstring")
                 await interaction.edit_original_response(embed=embed,
@@ -772,7 +771,7 @@ class BypassModal(Modal):
                     description=
                     f"**Original Link:**\n`{link_to_bypass[:100]}`\n\n**Bypassed Link:**\n`{bypassed_url}`\n\n⏱️ **Time Taken:** {result['time_taken']}s\n{cache_indicator}\n{api_info}{work_ink_note}",
                     color=discord.Color.green())
-                embed.set_footer(text="Bypass Bot | Powered by: https://ace-bypass.com • trw.lat • eas-x.com")
+                embed.set_footer(text="Bypass Bot | Powered by: https://ace-bypass.com • eas-x.com")
 
                 view = CopyLinkView(bypassed_url)
                 await interaction.edit_original_response(embed=embed,
@@ -2172,7 +2171,7 @@ async def on_message(message: discord.Message):
                                 f"```lua\n{preview}...\n```\n*Full script is {len(loadstring)} characters.*",
                                 inline=False)
 
-                        embed.set_footer(text="Bypass Bot | Powered by: https://ace-bypass.com • trw.lat • eas-x.com")
+                        embed.set_footer(text="Bypass Bot | Powered by: https://ace-bypass.com • eas-x.com")
                         await message.channel.send(embed=embed)
 
                         if len(loadstring) > 500:
@@ -2187,7 +2186,7 @@ async def on_message(message: discord.Message):
                             description=
                             f"{message.author.mention}\n**Original Link:**\n`{detected_link[:100]}`\n\n**Bypassed Link:**\n`{bypassed_url}`\n\n⏱️ **Time Taken:** {result['time_taken']}s\n{cache_indicator}\n{api_info}{work_ink_note}",
                             color=discord.Color.green())
-                        embed.set_footer(text="Bypass Bot | Powered by: https://ace-bypass.com • trw.lat • eas-x.com")
+                        embed.set_footer(text="Bypass Bot | Powered by: https://ace-bypass.com • eas-x.com")
                         await message.channel.send(embed=embed)
                 else:
                     if result.get('is_junkie'):

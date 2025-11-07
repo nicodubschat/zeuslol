@@ -4,9 +4,8 @@ import os
 from typing import Optional, Dict
 
 class BypassProvider:
-    def __init__(self, bypass_api_key: Optional[str] = None, trw_api_key: Optional[str] = None, zen_api_key: Optional[str] = None, eas_api_key: Optional[str] = None, bypass_vip_api_key: Optional[str] = None):
+    def __init__(self, bypass_api_key: Optional[str] = None, zen_api_key: Optional[str] = None, eas_api_key: Optional[str] = None, bypass_vip_api_key: Optional[str] = None):
         self.bypass_api_key = bypass_api_key or os.getenv('BYPASS_API_KEY')
-        self.trw_api_key = trw_api_key or os.getenv('TRW_API_KEY')
         self.zen_api_key = zen_api_key or os.getenv('ZEN_API_KEY')
         self.eas_api_key = eas_api_key or os.getenv('EAS_API_KEY')
         self.bypass_vip_api_key = bypass_vip_api_key or os.getenv('BYPASS_VIP_API_KEY')
@@ -138,7 +137,7 @@ class BypassProvider:
                 'api_name': api_name
             }
         else:
-            # Standard format for Ace/TRW
+            # Standard format for Ace Bypass
             loadstring = data.get('loadstring') or data.get('script') or data.get('code')
             bypassed_url = data.get('destination') or data.get('result') or data.get('bypassed_url') or data.get('url')
         
@@ -172,8 +171,6 @@ class BypassProvider:
             self.bypass_vip_api_key = api_key
         elif provider == 'ace-bypass':
             self.bypass_api_key = api_key
-        elif provider == 'trw-bypass':
-            self.trw_api_key = api_key
         elif provider == 'zen-bypass':
             self.zen_api_key = api_key
         elif provider == 'eas-bypass':
